@@ -1,4 +1,4 @@
-use crate::any::{Any, AnyArguments, AnyColumn, AnyColumnIndex, AnyTypeInfo};
+use crate::any::{Any, AnyArguments, AnyColumn, AnyTypeInfo};
 use crate::column::ColumnIndex;
 use crate::error::Error;
 use crate::ext::ustr::UStr;
@@ -9,10 +9,14 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 pub struct AnyStatement<'q> {
-    pub(crate) sql: Cow<'q, str>,
-    pub(crate) parameters: Option<Either<Vec<AnyTypeInfo>, usize>>,
-    pub(crate) column_names: Arc<HashMap<UStr, usize>>,
-    pub(crate) columns: Vec<AnyColumn>,
+    #[doc(hidden)]
+    pub sql: Cow<'q, str>,
+    #[doc(hidden)]
+    pub parameters: Option<Either<Vec<AnyTypeInfo>, usize>>,
+    #[doc(hidden)]
+    pub column_names: Arc<HashMap<UStr, usize>>,
+    #[doc(hidden)]
+    pub columns: Vec<AnyColumn>,
 }
 
 impl<'q> Statement<'q> for AnyStatement<'q> {
@@ -46,10 +50,7 @@ impl<'q> Statement<'q> for AnyStatement<'q> {
     impl_statement_query!(AnyArguments<'_>);
 }
 
-impl<'i> ColumnIndex<AnyStatement<'_>> for &'i str
-where
-    &'i str: AnyColumnIndex,
-{
+impl<'i> ColumnIndex<AnyStatement<'_>> for &'i str {
     fn index(&self, statement: &AnyStatement<'_>) -> Result<usize, Error> {
         statement
             .column_names

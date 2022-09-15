@@ -29,32 +29,17 @@ pub use sqlx_core::error::{self, Error, Result};
 #[cfg(feature = "migrate")]
 pub use sqlx_core::migrate;
 
-#[cfg(all(
-    any(
-        feature = "mysql",
-        feature = "sqlite",
-        feature = "postgres",
-        feature = "mssql"
-    ),
-    feature = "any"
-))]
-pub use sqlx_core::any::{self, Any, AnyConnection, AnyExecutor, AnyPool};
-
 #[cfg(feature = "mysql")]
 #[cfg_attr(docsrs, doc(cfg(feature = "mysql")))]
-pub use sqlx_core::mysql::{self, MySql, MySqlConnection, MySqlExecutor, MySqlPool};
-
-#[cfg(feature = "mssql")]
-#[cfg_attr(docsrs, doc(cfg(feature = "mssql")))]
-pub use sqlx_core::mssql::{self, Mssql, MssqlConnection, MssqlExecutor, MssqlPool};
+pub use sqlx_mysql::{self as mysql, MySql, MySqlConnection, MySqlExecutor, MySqlPool};
 
 #[cfg(feature = "postgres")]
 #[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
-pub use sqlx_core::postgres::{self, PgConnection, PgExecutor, PgPool, Postgres};
+pub use sqlx_postgres::{self as postgres, PgConnection, PgExecutor, PgPool, Postgres};
 
 #[cfg(feature = "sqlite")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlite")))]
-pub use sqlx_core::sqlite::{self, Sqlite, SqliteConnection, SqliteExecutor, SqlitePool};
+pub use sqlx_sqlite::{self as sqlite, Sqlite, SqliteConnection, SqliteExecutor, SqlitePool};
 
 #[cfg(feature = "macros")]
 #[doc(hidden)]
@@ -76,6 +61,9 @@ pub use sqlx_core::testing;
 
 #[doc(hidden)]
 pub use sqlx_core::rt::test_block_on;
+
+#[cfg(feature = "any")]
+pub mod any;
 
 #[cfg(feature = "macros")]
 mod macros;
@@ -154,8 +142,3 @@ pub mod prelude {
     pub use super::Statement;
     pub use super::Type;
 }
-
-#[doc(hidden)]
-#[inline(always)]
-#[deprecated = "`#[sqlx(rename = \"...\")]` is now `#[sqlx(type_name = \"...\")`"]
-pub fn _rename() {}

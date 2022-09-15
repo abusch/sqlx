@@ -6,6 +6,7 @@ use std::ops::Deref;
 use std::slice;
 
 #[derive(Debug)]
+#[doc(hidden)]
 pub struct Migrator {
     pub migrations: Cow<'static, [Migration]>,
     pub ignore_missing: bool,

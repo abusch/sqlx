@@ -1,45 +1,24 @@
 use crate::any::error::mismatched_types;
-use crate::any::{Any, AnyColumn, AnyColumnIndex};
-use crate::column::ColumnIndex;
-use crate::database::HasValueRef;
+use crate::any::{Any, AnyColumn, AnyTypeInfo, AnyTypeInfoKind, AnyValue, AnyValueKind};
+use crate::column::{Column, ColumnIndex};
+use crate::database::{Database, HasValueRef};
 use crate::decode::Decode;
 use crate::error::Error;
+use crate::ext::ustr::UStr;
 use crate::row::Row;
 use crate::type_info::TypeInfo;
 use crate::types::Type;
-use crate::value::ValueRef;
+use crate::value::{Value, ValueRef};
+use std::sync::Arc;
 
-#[cfg(feature = "postgres")]
-use crate::postgres::PgRow;
-
-#[cfg(feature = "mysql")]
-use crate::mysql::MySqlRow;
-
-#[cfg(feature = "sqlite")]
-use crate::sqlite::SqliteRow;
-
-#[cfg(feature = "mssql")]
-use crate::mssql::MssqlRow;
-
+#[derive(Clone)]
 pub struct AnyRow {
-    pub(crate) kind: AnyRowKind,
-    pub(crate) columns: Vec<AnyColumn>,
-}
-
-impl crate::row::private_row::Sealed for AnyRow {}
-
-pub(crate) enum AnyRowKind {
-    #[cfg(feature = "postgres")]
-    Postgres(PgRow),
-
-    #[cfg(feature = "mysql")]
-    MySql(MySqlRow),
-
-    #[cfg(feature = "sqlite")]
-    Sqlite(SqliteRow),
-
-    #[cfg(feature = "mssql")]
-    Mssql(MssqlRow),
+    #[doc(hidden)]
+    pub column_names: Arc<crate::HashMap<UStr, usize>>,
+    #[doc(hidden)]
+    pub columns: Vec<AnyColumn>,
+    #[doc(hidden)]
+    pub values: Vec<AnyValue>,
 }
 
 impl Row for AnyRow {
@@ -57,20 +36,15 @@ impl Row for AnyRow {
         I: ColumnIndex<Self>,
     {
         let index = index.index(self)?;
-
-        match &self.kind {
-            #[cfg(feature = "postgres")]
-            AnyRowKind::Postgres(row) => row.try_get_raw(index).map(Into::into),
-
-            #[cfg(feature = "mysql")]
-            AnyRowKind::MySql(row) => row.try_get_raw(index).map(Into::into),
-
-            #[cfg(feature = "sqlite")]
-            AnyRowKind::Sqlite(row) => row.try_get_raw(index).map(Into::into),
-
-            #[cfg(feature = "mssql")]
-            AnyRowKind::Mssql(row) => row.try_get_raw(index).map(Into::into),
-        }
+        Ok(self
+            .columns
+            .get(index)
+            .ok_or_else(|| Error::ColumnIndexOutOfBounds {
+                index,
+                len: self.columns.len(),
+            })?
+            .value
+            .as_ref())
     }
 
     fn try_get<'r, T, I>(&'r self, index: I) -> Result<T, Error>
@@ -93,23 +67,65 @@ impl Row for AnyRow {
     }
 }
 
-impl<'i> ColumnIndex<AnyRow> for &'i str
-where
-    &'i str: AnyColumnIndex,
-{
+impl<'i> ColumnIndex<AnyRow> for &'i str {
     fn index(&self, row: &AnyRow) -> Result<usize, Error> {
-        match &row.kind {
-            #[cfg(feature = "postgres")]
-            AnyRowKind::Postgres(row) => self.index(row),
+        row.column_names
+            .get(*self)
+            .copied()
+            .ok_or_else(|| Error::ColumnNotFound(self.to_string()))
+    }
+}
 
-            #[cfg(feature = "mysql")]
-            AnyRowKind::MySql(row) => self.index(row),
+impl AnyRow {
+    // This is not a `TryFrom` impl because trait impls are easy for users to accidentally
+    // become reliant upon, even if hidden, but we want to be able to change the bounds
+    // on this function as the `Any` driver gains support for more types.
+    //
+    // Also `column_names` needs to be passed by the driver to avoid making deep copies.
+    #[doc(hidden)]
+    pub fn map_from<'a, R: Row>(
+        row: &'a R,
+        column_names: Arc<crate::HashMap<UStr, usize>>,
+    ) -> Result<Self, Error>
+    where
+        usize: ColumnIndex<R>,
+        AnyTypeInfo: for<'a> TryFrom<&'a <R::Database as Database>::TypeInfo, Error = Error>,
+        AnyColumn: for<'a> TryFrom<&'a <R::Database as Database>::Column, Error = Error>,
+        i16: Type<R::Database> + Decode<'a, R::Database>,
+        i32: Type<R::Database> + Decode<'a, R::Database>,
+        i64: Type<R::Database> + Decode<'a, R::Database>,
+        f32: Type<R::Database> + Decode<'a, R::Database>,
+        f64: Type<R::Database> + Decode<'a, R::Database>,
+        String: Type<R::Database> + Decode<'a, R::Database>,
+        Vec<u8>: Type<R::Database> + Decode<'a, R::Database>,
+    {
+        let mut row_out = AnyRow {
+            column_names,
+            columns: Vec::with_capacity(row.columns().len()),
+            values: Vec::with_capacity(row.columns().len()),
+        };
 
-            #[cfg(feature = "sqlite")]
-            AnyRowKind::Sqlite(row) => self.index(row),
+        for col in row.columns() {
+            let i = col.ordinal;
 
-            #[cfg(feature = "mssql")]
-            AnyRowKind::Mssql(row) => self.index(row),
+            let any_col = AnyColumn::try_from(col)?;
+
+            let value_kind = match any_col.type_info.kind() {
+                _ if row.data.values[i].is_none() => AnyValueKind::Null,
+                AnyTypeInfoKind::Null => AnyValueKind::Null,
+                AnyTypeInfoKind::SmallInt => AnyValueKind::SmallInt(row.try_get(i)?),
+                AnyTypeInfoKind::Integer => AnyValueKind::Integer(row.try_get(i)?),
+                AnyTypeInfoKind::BigInt => AnyValueKind::BigInt(row.try_get(i)?),
+                AnyTypeInfoKind::Real => AnyValueKind::Real(row.try_get(i)?),
+                AnyTypeInfoKind::Double => AnyValueKind::Double(row.try_get(i)?),
+                AnyTypeInfoKind::Blob => AnyValueKind::Blob(row.try_get(i)?),
+                AnyTypeInfoKind::Text => AnyValueKind::Text(row.try_get(i)?),
+            };
+
+            row_out.columns.push(any_col);
+            row_out.values.push(AnyValue { kind: value_kind });
         }
+
+        Ok(row_out)
     }
 }

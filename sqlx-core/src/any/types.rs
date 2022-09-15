@@ -16,180 +16,49 @@
 //!
 //! In addition, `Option<T>` is supported where `T` implements `Type`. An `Option<T>` represents
 //! a potentially `NULL` value from SQL.
-//!
 
-// Type
+use crate::any::type_info::AnyTypeInfoKind;
+use crate::any::value::AnyValueKind;
+use crate::any::{Any, AnyTypeInfo, AnyValueRef};
+use crate::database::{HasArguments, HasValueRef};
+use crate::decode::Decode;
+use crate::encode::{Encode, IsNull};
+use crate::error::BoxDynError;
+use crate::types::Type;
+use std::borrow::Cow;
 
-impl_any_type!(bool);
+impl<'a> Type<Any> for &'a str {
+    fn type_info() -> AnyTypeInfo {
+        AnyTypeInfo {
+            kind: AnyTypeInfoKind::Text,
+        }
+    }
+}
 
-impl_any_type!(i16);
-impl_any_type!(i32);
-impl_any_type!(i64);
+impl<'a> Encode<'a, Any> for &'a str {
+    fn encode(self, buf: &mut <Any as HasArguments<'a>>::ArgumentBuffer) -> IsNull
+    where
+        Self: Sized,
+    {
+        buf.0.push(AnyValueKind::Text(self.into()));
+        IsNull::No
+    }
 
-impl_any_type!(f32);
-impl_any_type!(f64);
+    fn encode_by_ref(&self, buf: &mut <Any as HasArguments<'a>>::ArgumentBuffer) -> IsNull {
+        (*self).encode(buf)
+    }
+}
 
-impl_any_type!(str);
-impl_any_type!(String);
-
-// Encode
-
-impl_any_encode!(bool);
-
-impl_any_encode!(i16);
-impl_any_encode!(i32);
-impl_any_encode!(i64);
-
-impl_any_encode!(f32);
-impl_any_encode!(f64);
-
-impl_any_encode!(&'q str);
-impl_any_encode!(String);
-
-// Decode
-
-impl_any_decode!(bool);
-
-impl_any_decode!(i16);
-impl_any_decode!(i32);
-impl_any_decode!(i64);
-
-impl_any_decode!(f32);
-impl_any_decode!(f64);
-
-impl_any_decode!(&'r str);
-impl_any_decode!(String);
-
-// Conversions for Blob SQL types
-// Type
-#[cfg(all(
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_type!([u8]);
-#[cfg(all(
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_type!(Vec<u8>);
-
-// Encode
-#[cfg(all(
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_encode!(&'q [u8]);
-#[cfg(all(
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_encode!(Vec<u8>);
-
-// Decode
-#[cfg(all(
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_decode!(&'r [u8]);
-#[cfg(all(
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_decode!(Vec<u8>);
-
-// Conversions for Time SQL types
-// Type
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_type!(chrono::NaiveDate);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_type!(chrono::NaiveTime);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_type!(chrono::NaiveDateTime);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_type!(chrono::DateTime<chrono::offset::Utc>);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "sqlite", feature = "postgres", feature = "mysql"),
-    not(feature = "mssql")
-))]
-impl_any_type!(chrono::DateTime<chrono::offset::Local>);
-
-// Encode
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_encode!(chrono::NaiveDate);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_encode!(chrono::NaiveTime);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_encode!(chrono::NaiveDateTime);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_encode!(chrono::DateTime<chrono::offset::Utc>);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "sqlite", feature = "postgres", feature = "mysql"),
-    not(feature = "mssql")
-))]
-impl_any_encode!(chrono::DateTime<chrono::offset::Local>);
-
-// Decode
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_decode!(chrono::NaiveDate);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_decode!(chrono::NaiveTime);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_decode!(chrono::NaiveDateTime);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "mysql", feature = "sqlite", feature = "postgres"),
-    not(feature = "mssql")
-))]
-impl_any_decode!(chrono::DateTime<chrono::offset::Utc>);
-#[cfg(all(
-    feature = "chrono",
-    any(feature = "sqlite", feature = "postgres", feature = "mysql"),
-    not(feature = "mssql")
-))]
-impl_any_decode!(chrono::DateTime<chrono::offset::Local>);
+impl<'a> Decode<'a, Any> for &'a str {
+    fn decode(value: <Any as HasValueRef<'a>>::ValueRef) -> Result<Self, BoxDynError> {
+        match value.kind {
+            AnyValueKind::Text(Cow::Borrowed(text)) => Ok(text),
+            // This shouldn't happen in practice, it means the user got an `AnyValueRef`
+            // constructed from an owned `String` which shouldn't be allowed by the API.
+            AnyValueKind::Text(Cow::Owned(_text)) => {
+                panic!("attempting to return a borrow that outlives its buffer")
+            }
+            other => Err(format!("expected string, got {:?}", other).into()),
+        }
+    }
+}

@@ -1,11 +1,13 @@
 use crate::database::{Database, HasStatementCache};
 use crate::error::Error;
+
 use crate::transaction::Transaction;
 use futures_core::future::BoxFuture;
 use log::LevelFilter;
 use std::fmt::Debug;
 use std::str::FromStr;
 use std::time::Duration;
+use url::Url;
 
 /// Represents a single database connection.
 pub trait Connection: Send {
@@ -132,10 +134,11 @@ pub trait Connection: Send {
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct LogSettings {
-    pub(crate) statements_level: LevelFilter,
-    pub(crate) slow_statements_level: LevelFilter,
-    pub(crate) slow_statements_duration: Duration,
+    pub statements_level: LevelFilter,
+    pub slow_statements_level: LevelFilter,
+    pub slow_statements_duration: Duration,
 }
 
 impl Default for LogSettings {
@@ -160,6 +163,9 @@ impl LogSettings {
 
 pub trait ConnectOptions: 'static + Send + Sync + FromStr<Err = Error> + Debug + Clone {
     type Connection: Connection + ?Sized;
+
+    /// Parse the `ConnectOptions` from a URL.
+    fn from_url(url: &Url) -> Result<Self, Error>;
 
     /// Establish a new database connection with the options specified by `self`.
     fn connect(&self) -> BoxFuture<'_, Result<Self::Connection, Error>>

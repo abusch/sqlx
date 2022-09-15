@@ -94,11 +94,6 @@ pub enum DatabaseCommand {
 /// Group of commands for creating and running migrations.
 #[derive(Parser, Debug)]
 pub struct MigrateOpt {
-    /// Path to folder containing migrations.
-    /// Warning: deprecated, use <SUBCOMMAND> --source <SOURCE>
-    #[clap(long, default_value = "migrations")]
-    pub source: String,
-
     #[clap(subcommand)]
     pub command: MigrateCommand,
 }
