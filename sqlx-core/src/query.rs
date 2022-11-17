@@ -249,7 +249,8 @@ where
 
     #[inline]
     fn persistent(&self) -> bool {
-        self.inner.arguments.is_some()
+        self.inner.persistent()
+        // self.inner.arguments.is_some()
     }
 }
 
